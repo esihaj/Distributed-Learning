@@ -4,7 +4,7 @@ import random
 import threading
 import time
 from scipy.interpolate import lagrange
-
+import logging
 
 def loop():
     t = time.time()
@@ -31,6 +31,7 @@ class PolynomialCoder:
         self.m = m
         self.n = n
         self.var = [i+1 for i in range(N+1)] + [3]
+        logging.debug("var:\n" + str(self.var))
         # self.zero_padding_matrices()
         self.F = F
 
@@ -80,11 +81,9 @@ class PolynomialCoder:
         # Aenc = [sum([Ap[j] * (pow(var[i], j)) for j in range(m)]) for i in range(N)]
         # Benc = [sum([Bp[j] * (pow(var[i], j * m)) for j in range(n)])for i in range(N)]
 
-        print ("Aenc")
-        print (Aenc)
+        logging.debug("Aenc:\n" + str(Aenc))
+        logging.debug("Benc:\n" + str(Benc))
 
-        print ("Benc")
-        print (Benc)
         # Start requests to send
         request_A = [None] * N
         request_B = [None] * N
@@ -100,7 +99,7 @@ class PolynomialCoder:
             comm.Barrier()
 
         self.bp_sent = time.time()
-        print("Time spent sending all messages is: %f" % (self.bp_sent - self.bp_start))
+        logging.info("Time spent sending all messages is: %f" % (self.bp_sent - self.bp_start))
 
     def reducer(self):
 
@@ -132,36 +131,40 @@ class PolynomialCoder:
             return_C[j] = return_dict[j]
 
         self.bp_received = time.time()
-        print("Time spent waiting for %d workers %s is: %f" % (
+        logging.info("Time spent waiting for %d workers %s is: %f" % (
             m * n, ",".join(map(str, [x + 1 for x in list])), (self.bp_received - self.bp_sent)))
 
-        print("return C", return_C)
+        logging.debug("return C: " + str(return_C))
         base_indices = []
         for j in range(n):
             for i in range(m):
-                base_indices.append([i*int(r/m), j*(t/n)])
+                base_indices.append([i*int(r/m), j*int(t/n)])
         base_indices = tuple(reversed(base_indices))
-
+        logging.debug("base_indices:\n" + str(base_indices))
         # Lagrange polynomial interpolation
         # coeffs = np.zeros((int(r / m), int(t / n), m * n))
+        # list is 0 based but our workers, and Aenc, Benc matrices are 1 based
+        # so we need to convert the list
+        recv_var = tuple(map(lambda x: x+1, list))
         coeffs = np.zeros((r, t))
         for i in range(int(r / m)):
             for j in range(int(t / n)):
                 f_z = []
                 for k in range(m * n):
                     f_z.append(return_C[list[k]][i][j])
-                lagrange_interpolate = lagrange(list, f_z)
-                print("list", list, "f_z", f_z, "lag", lagrange_interpolate)
+                lagrange_interpolate = lagrange(recv_var, f_z)
+                logging.debug("list: %s,\nf_z: %s,\nlag: %s" %
+                              tuple(map(lambda x: str(x), [list, f_z, lagrange_interpolate])))
                 for index, lag_coef in enumerate(lagrange_interpolate):
                     coeffs[i+base_indices[index][0]][j+base_indices[index][1]] = lag_coef
-        print("coeffs", coeffs.shape)
+        logging.debug("coeffs: " + str(coeffs.shape))
 
-        print(coeffs)
+        logging.info("coeffs:\n" + str(coeffs))
 
         # TODO: Create C by combibing C_tildes
 
         self.bp_done = time.time()
-        print("Time spent decoding is: %f" % (self.bp_done - self.bp_received))
+        logging.info("Time spent decoding is: %f" % (self.bp_done - self.bp_received))
 
     def mapper(self):
 
@@ -196,12 +199,14 @@ class PolynomialCoder:
                 t = threading.Thread(target=loop)
                 t.start()
 
-        if comm.Get_rank() == 2:
-            print("r[" + str(comm.Get_rank()) + "]", Ai, Bi)
         Ci = (Ai.getT() * Bi) % F
+        logging.debug("r[" + str(comm.Get_rank()) + "] A:\n" + str(Ai)
+                      + "\nB:\n" + str(Bi)
+                      + "\nC:\n" + str(Ci))
+
         # print("Ci["+ str(comm.Get_rank()) +"]", Ci )
         self.wbp_done = time.time()
-        print("Worker %d computing takes: %f\n" % (comm.Get_rank(), self.wbp_done - self.wbp_received))
+        logging.info("Worker %d computing takes: %f\n" % (comm.Get_rank(), self.wbp_done - self.wbp_received))
 
         sC = comm.Isend(Ci, dest=0, tag=42)
         sC.Wait()
