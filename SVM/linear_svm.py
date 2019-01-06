@@ -121,8 +121,10 @@ from mpi4py import MPI
 import sys
 sys.path.insert(0,'../')
 from Polynomial import polynomial_code
-LARGE_PRIME_NUMBER = 104729
+LARGE_PRIME_NUMBER = 2125991977
+count = 0
 def svm_distributed_loss_vectorized(W, X, y, reg):
+    global count
     """
     Structured SVM loss function, vectorized implementation.
     Inputs and outputs are the same as svm_loss_naive.
@@ -141,9 +143,14 @@ def svm_distributed_loss_vectorized(W, X, y, reg):
     # result in loss.                                                           #
     #############################################################################
     # scores = np.matmul(X, W)
-    NUMBER_OF_WORKERS_AND_MASTER = 8
-    polynomial_code.PolynomialCoder(X, W, 7, 1, scores, LARGE_PRIME_NUMBER, NUMBER_OF_WORKERS_AND_MASTER,
-                                    MPI.COMM_WORLD).polynomial_code()
+    # print ("scores:", scores)
+    NUMBER_OF_WORKERS = 6
+    m = 5
+    n = 1
+    p_code = polynomial_code.PolynomialCoder(X.T, W, m, n, None, LARGE_PRIME_NUMBER, NUMBER_OF_WORKERS,
+                                    MPI.COMM_WORLD)
+    p_code.polynomial_code()
+    scores = p_code.coeffs
     r = range(num_train)
     # matrix of size num_train * num_classes. All of the elemements of the i-th
     # row is the score of correct class of i-th instance.
