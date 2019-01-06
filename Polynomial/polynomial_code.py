@@ -14,7 +14,7 @@ def loop():
 
 class PolynomialCoder:
 
-    def __init__(self, A, B, m, n, buffer, F, comm):
+    def __init__(self, A, B, m, n, buffer, F, N, comm):
         # Buffer to put the answer
         self.buffer = buffer
         # Change to True for more accurate timing, sacrificing performance
@@ -22,15 +22,16 @@ class PolynomialCoder:
         # Change to True to imitate straggler effects
         self.straggling = False
         self.comm = comm
+        self.N = N
         self.A = A
         self.B = B
         self.s = A.shape[0]
-        self.r = A.shape[0]
-        self.t = B.shape[0]
+        self.r = A.shape[1]
+        self.t = B.shape[1]
         self.m = m
         self.n = n
-        self.var = [i+1 for i in range(16)] + [3]
-        self.zero_padding_matrices()
+        self.var = [i+1 for i in range(N+1)] + [3]
+        # self.zero_padding_matrices()
         self.F = F
 
     def zero_padding_matrices(self):
@@ -75,7 +76,15 @@ class PolynomialCoder:
         # Encode the matrices
         Aenc = [sum([Ap[j] * (pow(var[i], j, F)) for j in range(m)]) % F for i in range(N)]
         Benc = [sum([Bp[j] * (pow(var[i], j * m, F)) for j in range(n)]) % F for i in range(N)]
+        Benc = np.asarray(Benc, dtype=np.int)
+        # Aenc = [sum([Ap[j] * (pow(var[i], j)) for j in range(m)]) for i in range(N)]
+        # Benc = [sum([Bp[j] * (pow(var[i], j * m)) for j in range(n)])for i in range(N)]
 
+        print ("Aenc")
+        print (Aenc)
+
+        print ("Benc")
+        print (Benc)
         # Start requests to send
         request_A = [None] * N
         request_B = [None] * N
@@ -126,15 +135,27 @@ class PolynomialCoder:
         print("Time spent waiting for %d workers %s is: %f" % (
             m * n, ",".join(map(str, [x + 1 for x in list])), (self.bp_received - self.bp_sent)))
 
+        print("return C", return_C)
+        base_indices = []
+        for j in range(n):
+            for i in range(m):
+                base_indices.append([i*int(r/m), j*(t/n)])
+        base_indices = tuple(reversed(base_indices))
+
         # Lagrange polynomial interpolation
-        coeffs = np.zeros((int(r / m), int(t / n), m * n))
+        # coeffs = np.zeros((int(r / m), int(t / n), m * n))
+        coeffs = np.zeros((r, t))
         for i in range(int(r / m)):
             for j in range(int(t / n)):
                 f_z = []
                 for k in range(m * n):
                     f_z.append(return_C[list[k]][i][j])
                 lagrange_interpolate = lagrange(list, f_z)
-                coeffs[i][j] = lagrange_interpolate
+                print("list", list, "f_z", f_z, "lag", lagrange_interpolate)
+                for index, lag_coef in enumerate(lagrange_interpolate):
+                    coeffs[i+base_indices[index][0]][j+base_indices[index][1]] = lag_coef
+        print("coeffs", coeffs.shape)
+
         print(coeffs)
 
         # TODO: Create C by combibing C_tildes
@@ -149,9 +170,11 @@ class PolynomialCoder:
         s = self.s
         n = self.n
         m = self.m
-
+        r = self.r
+        t = self.t
         # Receive straggler information from the master
         straggler = comm.recv(source=0, tag=7)
+
 
         # Receive split input matrices from the master
         Ai = np.empty_like(np.matrix([[0] * int(r / m) for i in range(s)]))
@@ -173,7 +196,10 @@ class PolynomialCoder:
                 t = threading.Thread(target=loop)
                 t.start()
 
+        if comm.Get_rank() == 2:
+            print("r[" + str(comm.Get_rank()) + "]", Ai, Bi)
         Ci = (Ai.getT() * Bi) % F
+        # print("Ci["+ str(comm.Get_rank()) +"]", Ci )
         self.wbp_done = time.time()
         print("Worker %d computing takes: %f\n" % (comm.Get_rank(), self.wbp_done - self.wbp_received))
 
@@ -182,7 +208,7 @@ class PolynomialCoder:
 
     def polynomial_code(self):
         comm = self.comm
-        if comm.rank == 0:
+        if comm.Get_rank()  == 0:
             self.data_send()
             self.reducer()
         else:
