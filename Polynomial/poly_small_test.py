@@ -3,7 +3,7 @@ from mpi4py import MPI
 import polynomial_code
 import logging
 import time
-LARGE_PRIME_NUMBER = 2125991977  # 65537
+LARGE_PRIME_NUMBER = 65537  # 65537
 NP_DATA_TYPE=np.float64
 # A = s x r, B = s x t
 
@@ -12,22 +12,30 @@ NP_DATA_TYPE=np.float64
 # m = 3
 # n = 1
 
-# s, r, t = 4, 4, 2
+s, r, t = 4, 4, 4
 # A = np.arange(1, 1+s*r).reshape([s, r]).astype(NP_DATA_TYPE)
-# B = np.ones([s, t]).astype(NP_DATA_TYPE)
-# m, n = 4, 1
-
-
-s, r, t = 500, 3073, 10
-A = np.arange(1, 1+s*r).reshape([s, r]).astype(NP_DATA_TYPE)
 A = np.random.rand(s, r).astype(dtype=NP_DATA_TYPE)
 B = np.ones([s, t]).astype(NP_DATA_TYPE)
-m, n = 7, 1
+m, n = 4, 4
+
+
+# s, r, t = 500, 3073, 10
+# A = np.arange(1, 1+s*r).reshape([s, r]).astype(NP_DATA_TYPE)
+# A = np.random.rand(s, r).astype(dtype=NP_DATA_TYPE)
+# B = np.ones([s, t]).astype(NP_DATA_TYPE)
+# m, n = 7, 1
 
 # loaded_data = np.load("wx_array.npz")
 # A = loaded_data['X'].T
 # B = loaded_data['W']
 # m, n = 1, 1
+
+# s, r, t = 4, 4, 4
+# # A = np.random.randint(0, 2, (s, r)).astype(dtype=NP_DATA_TYPE)
+# A = np.random.rand(s, r).astype(dtype=NP_DATA_TYPE)
+# B = np.ones([s, t]).astype(NP_DATA_TYPE)
+# m, n = 4, 4
+
 
 N = m * n + 1
 if __name__ == '__main__':

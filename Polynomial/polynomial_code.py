@@ -143,6 +143,11 @@ class PolynomialCoder:
         logging.debug("return C: " + str(return_C))
 
         self.coeffs = self.calculate_C(return_C, recv_index)
+        # self.coeffs = self.fast_calc_c(return_C, recv_index)
+
+        logging.debug("coeffs: " + str(self.coeffs.shape))
+        logging.info("coeffs:\n" + str(self.coeffs))
+
         self.bp_done = time.time()
         logging.info("Time spent decoding is: %f" % (self.bp_done - self.bp_received))
 
@@ -179,10 +184,33 @@ class PolynomialCoder:
                 for index, lag_coef in enumerate(lagrange_interpolate):
                     coeffs[i + base_indices[index][0]][j + base_indices[index][1]] = lag_coef
 
-        # logging.debug("coeffs: " + str(coeffs.shape))
-        # logging.info("coeffs:\n" + str(coeffs))
         return coeffs
 
+    def fast_calc_c(self, return_C, recv_index):
+        m, n, F, var = self.m, self.n, self.F, self.var
+        missing = set(range(m * n)) - set(recv_index)
+        # Fast decoding hard coded for m, n = 4
+        sig = 4
+        xlist = [var[i] for i in recv_index]
+
+        for i in missing:
+            begin = time.time()
+            coeff = [1] * (m * n)
+            for j in range(m * n):
+                # Compute coefficient
+                for k in set(recv_index) - set([recv_index[j]]):
+                    coeff[j] = (coeff[j] * (var[i] - var[k]) * pow(var[recv_index[j]] - var[k], F - 2, F)) % F
+            return_C[i] = sum([return_C[recv_index[j]] * coeff[j] for j in range(16)]) % F
+
+        for k in range(4):
+            jump = 2 ** (3 - k)
+            for i in range(jump):
+                block_num = 8 / jump
+                for j in range(block_num):
+                    base = i + j * jump * 2
+                    return_C[base] = ((return_C[base] + return_C[base + jump]) * 32769) % F
+                    return_C[base + jump] = ((return_C[base] - return_C[base + jump]) * var[(-i * block_num) % 16]) % F
+        return return_C
     @staticmethod
     def mapper(comm, barrier_enabled, straggling_enabled):
         spec_dict = comm.bcast(None)
